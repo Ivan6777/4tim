@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор зустрічей</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS CDN для роботи з Excel-файлами -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .btn {
+            @apply px-6 py-3 rounded-xl font-semibold transition-colors duration-200;
+        }
+        .btn-primary {
+            @apply bg-blue-600 text-white hover:bg-blue-700;
+        }
+        .btn-secondary {
+            @apply bg-gray-200 text-gray-700 hover:bg-gray-300;
+        }
+        .btn-danger {
+            @apply bg-red-500 text-white hover:bg-red-600;
+        }
+        .input-field {
+            @apply px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500;
+        }
+        .card {
+            @apply bg-white p-6 rounded-2xl shadow-lg;
+        }
+        #messageBox {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 2rem;
+            border-radius: 0.75rem;
+            color: white;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #messageBox.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="p-8">
+    <div class="container mx-auto">
+        <h1 class="text-4xl font-bold text-center mb-8 text-blue-800">Генератор щотижневих зустрічей</h1>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Ручне введення учасників -->
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4">Додати учасника</h2>
+                <div class="space-y-4">
+                    <input type="text" id="participantName" placeholder="Ім'я учасника" class="input-field w-full">
+                    <input type="text" id="participantNiche" placeholder="Ніша" class="input-field w-full">
+                    <button id="addParticipantBtn" class="btn btn-primary w-full">Додати</button>
+                </div>
+            </div>
+
+            <!-- Завантаження Excel-файлу -->
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4">Завантажити Excel</h2>
+                <p class="text-gray-500 mb-4">Завантажте файл participants.xlsx</p>
+                <input type="file" id="fileInput" accept=".xlsx, .xls" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                <p id="fileStatus" class="mt-2 text-sm text-gray-600"></p>
+            </div>
+
+            <!-- Кнопки керування -->
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4">Дії</h2>
+                <div class="space-y-3">
+                    <!-- Поле для кількості тестових учасників -->
+                    <div>
+                        <input type="number" id="testParticipantCount" placeholder="Кількість тестових учасників" value="100" min="1" max="1000" class="input-field w-full mt-1">
+                        <button id="generateTestBtn" class="btn btn-secondary w-full mt-2">Згенерувати тестові дані</button>
+                    </div>
+                    <button id="generateGroupsBtn" class="btn btn-primary w-full">Сформувати групи</button>
+                    <button id="downloadGroupsBtn" class="btn btn-secondary w-full">Завантажити групи (.csv)</button>
+                    <button id="downloadHistoryBtn" class="btn btn-secondary w-full">Завантажити історію (.csv)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Налаштування -->
+        <div class="card mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Налаштування</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label for="groupSize" class="block text-sm font-medium text-gray-700">Розмір групи (4)</label>
+                    <input type="number" id="groupSize" value="4" min="2" max="100" class="input-field w-full mt-1">
+                </div>
+                <div>
+                    <label for="maxAttempts" class="block text-sm font-medium text-gray-700">Макс. спроб на тиждень (100)</label>
+                    <input type="number" id="maxAttempts" value="100" min="10" max="1000" class="input-field w-full mt-1">
+                </div>
+                <!-- Нове поле для введення кількості тижнів -->
+                <div>
+                    <label for="maxWeeks" class="block text-sm font-medium text-gray-700">Макс. тижнів (10)</label>
+                    <input type="number" id="maxWeeks" value="10" min="1" max="1000" class="input-field w-full mt-1">
+                </div>
+            </div>
+        </div>
+
+        <!-- Секція логування та статусу -->
+        <div class="card mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Статус та лог</h2>
+            <div id="logArea" class="bg-gray-100 p-4 rounded-lg text-sm h-48 overflow-y-auto">
+                <p>Готовий до роботи.</p>
+            </div>
+        </div>
+
+        <!-- Нова секція для охоплення -->
+        <div class="card mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Статистика зустрічей</h2>
+            <div class="space-y-2">
+                <div class="flex items-center">
+                    <span class="font-bold">Учасників:</span>
+                    <span id="participantCount" class="ml-2">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="font-bold">Можливих унікальних пар:</span>
+                    <span id="totalPairs" class="ml-2">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="font-bold">Зустрілися пар:</span>
+                    <span id="metPairs" class="ml-2">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="font-bold">Охоплення:</span>
+                    <span id="coverage" class="ml-2 text-blue-600 font-bold">0.00%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Список учасників -->
+        <div class="card mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Поточний список учасників</h2>
+            <div id="participantsList" class="space-y-2">
+                <p class="text-gray-500">Список порожній. Додайте учасників вручну або завантажте файл.</p>
+            </div>
+        </div>
+
+        <!-- Виведення згенерованих груп -->
+        <div class="card">
+            <h2 class="text-2xl font-semibold mb-4">Згенеровані групи</h2>
+            <div id="groupsOutput" class="space-y-6">
+                <p class="text-gray-500">Після генерації результати з'являться тут.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Custom message box -->
+    <div id="messageBox" class="hidden"></div>
+
+    <script>
+        // Ініціалізація змінних
+        let participants = [];
+        let meetingHistory = new Set(); // Зберігає унікальні пари як "id1-id2"
+        let groupsHistory = [];
+        const TARGET_COVERAGE = 0.95; // Цільове охоплення 95%
+        let lastGeneratedParticipantCount = 0; // Змінна для відстеження кількості учасників після останньої генерації
+
+        // Визначення ніш для тестових даних
+        const niches = [
+            'CRM', 'ШІ', 'Виробництво та продаж комбас', 'Бізнес навчання', 'Кінотеатр', 
+            'Інфобіз', 'Консалтинг', 'Маркетинг', 'Стратегія', 'Фінанси', 'Стоматологія', 
+            'Графічний дизайн', 'HR', 'Логістика', 'Забудовник', 'Продюсування', 
+            'Металоконструкції', 'Юристи'
+        ];
+
+        // Посилання на DOM-елементи
+        const addParticipantBtn = document.getElementById('addParticipantBtn');
+        const participantNameInput = document.getElementById('participantName');
+        const participantNicheInput = document.getElementById('participantNiche');
+        const fileInput = document.getElementById('fileInput');
+        const fileStatus = document.getElementById('fileStatus');
+        const generateTestBtn = document.getElementById('generateTestBtn');
+        const generateGroupsBtn = document.getElementById('generateGroupsBtn');
+        const downloadGroupsBtn = document.getElementById('downloadGroupsBtn');
+        const downloadHistoryBtn = document.getElementById('downloadHistoryBtn');
+        const logArea = document.getElementById('logArea');
+        const groupsOutput = document.getElementById('groupsOutput');
+        const groupSizeInput = document.getElementById('groupSize');
+        const maxAttemptsInput = document.getElementById('maxAttempts');
+        const maxWeeksInput = document.getElementById('maxWeeks');
+        const participantsList = document.getElementById('participantsList');
+        const messageBox = document.getElementById('messageBox');
+        
+        // Нові DOM-елементи для статистики
+        const participantCountSpan = document.getElementById('participantCount');
+        const totalPairsSpan = document.getElementById('totalPairs');
+        const metPairsSpan = document.getElementById('metPairs');
+        const coverageSpan = document.getElementById('coverage');
+        const testParticipantCountInput = document.getElementById('testParticipantCount');
+
+        // Допоміжні функції
+        function log(message, type = 'info') {
+            const p = document.createElement('p');
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            if (type === 'error') p.style.color = '#dc2626';
+            else if (type === 'success') p.style.color = '#16a34a';
+            logArea.prepend(p);
+        }
+
+        function showMessage(message, type = 'info') {
+            messageBox.textContent = message;
+            messageBox.className = 'show';
+            if (type === 'error') {
+                messageBox.style.backgroundColor = '#dc2626';
+            } else if (type === 'success') {
+                messageBox.style.backgroundColor = '#16a34a';
+            } else {
+                messageBox.style.backgroundColor = '#2563eb';
+            }
+
+            setTimeout(() => {
+                messageBox.className = 'hidden';
+            }, 3000);
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // Функція для оновлення статистики охоплення
+        function updateCoverageStats() {
+            const n = participants.length;
+            const totalPossiblePairs = n * (n - 1) / 2;
+            const metPairsCount = meetingHistory.size;
+            const coveragePercentage = totalPossiblePairs > 0 ? (metPairsCount / totalPossiblePairs) * 100 : 0;
+            
+            participantCountSpan.textContent = n;
+            totalPairsSpan.textContent = totalPossiblePairs.toFixed(0);
+            metPairsSpan.textContent = metPairsCount;
+            coverageSpan.textContent = `${coveragePercentage.toFixed(2)}%`;
+        }
+
+        // Рендеринг списку учасників
+        function renderParticipants() {
+            participantsList.innerHTML = '';
+            if (participants.length === 0) {
+                participantsList.innerHTML = '<p class="text-gray-500">Список порожній. Додайте учасників вручну або завантажте файл.</p>';
+                return;
+            }
+
+            participants.forEach((p, index) => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-2 rounded-lg bg-gray-100';
+                item.innerHTML = `
+                    <span class="text-sm font-medium">${p.name} (${p.niche})</span>
+                    <button class="remove-btn btn-danger px-3 py-1 text-sm rounded-lg" data-id="${p.id}">Видалити</button>
+                `;
+                participantsList.appendChild(item);
+            });
+
+            document.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idToRemove = parseInt(e.target.dataset.id);
+                    removeParticipant(idToRemove);
+                });
+            });
+
+            updateCoverageStats();
+        }
+
+        // Логіка додавання учасників
+        function addParticipant() {
+            const name = participantNameInput.value.trim();
+            const niche = participantNicheInput.value.trim();
+            if (name && niche) {
+                const newId = participants.length > 0 ? Math.max(...participants.map(p => p.id)) + 1 : 0;
+                participants.push({ id: newId, name, niche });
+                log(`Додано учасника: ${name} (${niche}). Всього: ${participants.length}`);
+                showMessage(`Додано учасника: ${name}`, 'success');
+                participantNameInput.value = '';
+                participantNicheInput.value = '';
+                renderParticipants();
+            } else {
+                showMessage('Будь ласка, введіть ім\'я та нішу.', 'error');
+            }
+        }
+        
+        // Логіка видалення учасників
+        function removeParticipant(id) {
+            const indexToRemove = participants.findIndex(p => p.id === id);
+            if (indexToRemove !== -1) {
+                const removedParticipant = participants.splice(indexToRemove, 1)[0];
+                log(`Видалено учасника: ${removedParticipant.name} (${removedParticipant.niche}). Залишилось: ${participants.length}`);
+                showMessage(`Видалено учасника: ${removedParticipant.name}`, 'info');
+                renderParticipants();
+            }
+        }
+
+        // Обробка завантаження файлу
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                fileStatus.textContent = `Файл "${file.name}" завантажується...`;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (json.length === 0) {
+                        log('Файл порожній.', 'error');
+                        fileStatus.textContent = 'Немає даних у файлі.';
+                        return;
+                    }
+
+                    participants = [];
+                    json.forEach((row) => {
+                        const name = row['Ім\'я'] || row['Ім\'я учасника'] || row['Name'] || '';
+                        const niche = row['Ніша'] || row['Niche'] || '';
+                        if (name && niche) {
+                            const newId = participants.length > 0 ? Math.max(...participants.map(p => p.id)) + 1 : 0;
+                            participants.push({ id: newId, name, niche });
+                        }
+                    });
+
+                    if (participants.length > 0) {
+                        log(`Успішно завантажено ${participants.length} учасників із файлу.`);
+                        fileStatus.textContent = `Успішно завантажено ${participants.length} учасників.`;
+                    } else {
+                        log('Не вдалося знайти учасників у файлі. Перевірте заголовки стовпців (Ім\'я, Ніша).', 'error');
+                        fileStatus.textContent = 'Немає відповідних даних.';
+                    }
+                    renderParticipants();
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // Генерація тестових даних
+        generateTestBtn.addEventListener('click', () => {
+            const count = parseInt(testParticipantCountInput.value) || 100;
+            participants = [];
+            meetingHistory = new Set();
+            groupsHistory = [];
+            lastGeneratedParticipantCount = 0;
+            for (let i = 0; i < count; i++) {
+                const name = `Учасник ${i + 1}`;
+                const niche = niches[Math.floor(Math.random() * niches.length)];
+                participants.push({ id: i, name, niche });
+            }
+            log(`Згенеровано ${count} тестових учасників.`);
+            showMessage(`Згенеровано ${count} тестових учасників.`, 'success');
+            renderParticipants();
+            groupsOutput.innerHTML = '<p class="text-gray-500">Згенеровано тестові дані. Натисніть "Сформувати групи".</p>';
+        });
+
+        /**
+         * Головна логіка формування груп.
+         * Оптимізована версія, що максимізує унікальні пари.
+         * @param {number} startWeek - Тиждень, з якого потрібно почати генерацію.
+         */
+        async function startGeneration(startWeek = 1) {
+            const groupSize = parseInt(groupSizeInput.value);
+            const maxWeeks = parseInt(maxWeeksInput.value);
+            const initialParticipantsCount = participants.length;
+            
+            if (initialParticipantsCount < groupSize) {
+                log('Недостатньо учасників для формування груп.', 'error');
+                showMessage('Недостатньо учасників. Будь ласка, додайте більше.', 'error');
+                return;
+            }
+
+            let actualStartWeek = startWeek;
+            if (startWeek === 1 && groupsHistory.length > 0 && initialParticipantsCount === lastGeneratedParticipantCount) {
+                actualStartWeek = groupsHistory.length + 1;
+                log(`Продовжуємо генерацію з тижня ${actualStartWeek}.`);
+            } else if (startWeek === 1) {
+                log('Починаємо нову генерацію з 1-го тижня.');
+                groupsHistory = [];
+                meetingHistory = new Set();
+            } else {
+                log(`Перезапускаємо генерацію з тижня ${actualStartWeek}.`);
+                const weeksToRegen = groupsHistory.filter(w => w.week >= actualStartWeek);
+                weeksToRegen.forEach(weekData => {
+                    weekData.groups.forEach(group => {
+                        for (let k = 0; k < group.length; k++) {
+                            for (let l = k + 1; l < group.length; l++) {
+                                const p1 = group[k].id;
+                                const p2 = group[l].id;
+                                const pairKey = p1 < p2 ? `${p1}-${p2}` : `${p2}-${p1}`;
+                                if (meetingHistory.has(pairKey)) {
+                                    meetingHistory.delete(pairKey);
+                                }
+                            }
+                        }
+                    });
+                });
+                groupsHistory = groupsHistory.slice(0, actualStartWeek - 1);
+            }
+            
+            groupsOutput.innerHTML = '';
+            let week = actualStartWeek - 1;
+            let currentCoverage = 0;
+
+            while (currentCoverage < TARGET_COVERAGE && week < maxWeeks) {
+                week++;
+                log(`Тиждень ${week}: Починаємо формування груп.`);
+                const weekGroups = [];
+                const tempParticipants = [...participants]; // Повний список учасників для кожної ітерації
+                let remainingParticipants = new Set(tempParticipants.map(p => p.id));
+                
+                let generationSuccessful = true;
+                let attemptsInWeek = 0;
+                
+                while (remainingParticipants.size >= groupSize) {
+                    attemptsInWeek++;
+                    let bestGroup = null;
+                    let bestScore = -1;
+
+                    // Генеруємо всі можливі комбінації для поточної групи
+                    // Цей підхід є більш надійним, ніж випадкові спроби, особливо на пізніших етапах
+                    const possibleGroups = [];
+                    const currentParticipantList = tempParticipants.filter(p => remainingParticipants.has(p.id));
+
+                    // Рекурсивна функція для пошуку всіх можливих груп
+                    function findCombinations(start, combination) {
+                        if (combination.length === groupSize) {
+                            possibleGroups.push(combination);
+                            return;
+                        }
+                        for (let i = start; i < currentParticipantList.length; i++) {
+                            findCombinations(i + 1, combination.concat(currentParticipantList[i]));
+                        }
+                    }
+                    findCombinations(0, []);
+
+                    // Оцінюємо кожну можливу групу
+                    for (const group of possibleGroups) {
+                        let uniquePairsCount = 0;
+                        let uniqueNichesCount = new Set(group.map(p => p.niche)).size;
+
+                        let isGroupValid = true;
+                        // Перевіряємо унікальність пар
+                        for (let i = 0; i < group.length; i++) {
+                            for (let j = i + 1; j < group.length; j++) {
+                                const p1 = group[i].id;
+                                const p2 = group[j].id;
+                                const pairKey = p1 < p2 ? `${p1}-${p2}` : `${p2}-${p1}`;
+                                if (meetingHistory.has(pairKey)) {
+                                    isGroupValid = false;
+                                    break;
+                                } else {
+                                    uniquePairsCount++;
+                                }
+                            }
+                            if (!isGroupValid) break;
+                        }
+
+                        if (isGroupValid) {
+                            // Розраховуємо оцінку для групи
+                            // Пріоритет: 1. Унікальність пар (всі нові). 2. Різноманітність ніш.
+                            const score = (uniquePairsCount / (groupSize * (groupSize - 1) / 2)) * 1000 + uniqueNichesCount;
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestGroup = group;
+                                // Додаємо релевантність для виведення в UI
+                                bestGroup.relevance = (uniqueNichesCount / groupSize) * 100;
+                            }
+                        }
+                    }
+                    
+                    if (bestGroup) {
+                        weekGroups.push(bestGroup);
+                        
+                        // Оновлюємо список учасників, що залишилися
+                        for (const p of bestGroup) {
+                            remainingParticipants.delete(p.id);
+                        }
+
+                        // Додаємо всі пари з нової групи в історію зустрічей
+                        for (let k = 0; k < groupSize; k++) {
+                            for (let l = k + 1; l < groupSize; l++) {
+                                const p1 = bestGroup[k].id;
+                                const p2 = bestGroup[l].id;
+                                const pairKey = p1 < p2 ? `${p1}-${p2}` : `${p2}-${p1}`;
+                                meetingHistory.add(pairKey);
+                            }
+                        }
+                    } else {
+                        // Якщо не вдалося сформувати жодної групи
+                        log(`Неможливо сформувати повну групу на тижні ${week}. Генерацію припинено.`, 'error');
+                        generationSuccessful = false;
+                        break;
+                    }
+                }
+                
+                if (generationSuccessful) {
+                    groupsHistory.push({ week, groups: weekGroups });
+                    log(`Тиждень ${week} завершено. Сформовано ${weekGroups.length} груп.`);
+                } else {
+                    showMessage(`Неможливо сформувати жодної групи на тижні ${week}.`, 'error');
+                    break;
+                }
+                
+                // Оновлення охоплення
+                const n = participants.length;
+                const totalPossiblePairs = n * (n - 1) / 2;
+                currentCoverage = totalPossiblePairs > 0 ? meetingHistory.size / totalPossiblePairs : 0;
+            }
+
+            renderGroups();
+            updateCoverageStats();
+            if (currentCoverage >= TARGET_COVERAGE) {
+                log(`Генерацію груп завершено! Досягнуто охоплення ${currentCoverage.toFixed(2)}% за ${week} тижнів.`, 'success');
+                showMessage(`Генерацію груп завершено! Досягнуто охоплення ${currentCoverage.toFixed(2)}%`, 'success');
+            } else {
+                log(`Генерацію груп зупинено. Досягнуто охоплення ${currentCoverage.toFixed(2)}% на ${week} тижнях.`, 'info');
+                showMessage(`Генерацію груп зупинено. Досягнуто охоплення ${currentCoverage.toFixed(2)}%.`, 'info');
+            }
+            lastGeneratedParticipantCount = participants.length;
+        }
+
+        // Логіка видалення учасника з групи
+        function removeParticipantFromGroup(week, participantId) {
+            const participantName = participants.find(p => p.id === participantId)?.name;
+            if (participantName) {
+                log(`Видалення учасника ${participantName} з групи на тижні ${week}...`);
+                removeParticipant(participantId);
+                startGeneration(week);
+            }
+        }
+
+        // Функція для візуалізації результатів
+        function renderGroups() {
+            groupsOutput.innerHTML = '';
+            if (groupsHistory.length === 0) {
+                groupsOutput.innerHTML = '<p class="text-gray-500">Результатів немає. Сформуйте групи, щоб побачити їх тут.</p>';
+                return;
+            }
+
+            groupsHistory.forEach(weekData => {
+                const weekSection = document.createElement('div');
+                weekSection.className = 'bg-white p-6 rounded-2xl shadow-lg mb-6';
+                weekSection.innerHTML = `<h3 class="text-xl font-bold mb-4">Тиждень ${weekData.week}</h3>`;
+
+                weekData.groups.forEach((group, index) => {
+                    const groupDiv = document.createElement('div');
+                    groupDiv.className = 'border-b border-gray-200 pb-4 mb-4 last:border-b-0 last:pb-0 last:mb-0';
+                    groupDiv.innerHTML = `<h4 class="text-lg font-semibold mb-2">Група ${index + 1} <span class="text-sm text-gray-500 font-normal ml-2">(Релевантність: ${group.relevance.toFixed(2)}%)</span></h4>`;
+                    
+                    const ul = document.createElement('ul');
+                    ul.className = 'list-disc list-inside space-y-1';
+                    group.forEach(p => {
+                        const li = document.createElement('li');
+                        li.className = 'flex items-center justify-between';
+                        li.innerHTML = `
+                            <span>${p.name} - ${p.niche}</span>
+                            <button class="remove-from-group-btn btn-danger px-3 py-1 text-xs rounded-lg" data-week="${weekData.week}" data-id="${p.id}">Видалити</button>
+                        `;
+                        ul.appendChild(li);
+                    });
+                    groupDiv.appendChild(ul);
+                    weekSection.appendChild(groupDiv);
+                });
+                groupsOutput.appendChild(weekSection);
+            });
+            
+            document.querySelectorAll('.remove-from-group-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const week = parseInt(e.target.dataset.week);
+                    const id = parseInt(e.target.dataset.id);
+                    removeParticipantFromGroup(week, id);
+                });
+            });
+        }
+
+        // Функція завантаження файлу CSV
+        function downloadCSV(filename, data) {
+            const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+
+        // Завантаження груп у CSV
+        downloadGroupsBtn.addEventListener('click', () => {
+            if (groupsHistory.length === 0) {
+                log('Немає даних для завантаження.', 'error');
+                return;
+            }
+
+            let csvContent = "Тиждень,Номер Групи,Учасники,Ніші,Релевантність\n";
+            groupsHistory.forEach(weekData => {
+                weekData.groups.forEach((group, index) => {
+                    const groupNames = group.map(p => p.name).join('; ');
+                    const groupNiches = group.map(p => p.niche).join('; ');
+                    const relevance = group.relevance.toFixed(2);
+                    csvContent += `${weekData.week},${index + 1},"${groupNames}","${groupNiches}",${relevance}\n`;
+                });
+            });
+
+            downloadCSV('groups.csv', csvContent);
+            log('Файл з групами успішно завантажено.', 'success');
+        });
+
+        // Завантаження історії зустрічей у CSV
+        downloadHistoryBtn.addEventListener('click', () => {
+            if (meetingHistory.size === 0) {
+                log('Немає історії зустрічей для завантаження.', 'error');
+                return;
+            }
+
+            let csvContent = "ID1,ID2\n";
+            meetingHistory.forEach(pair => {
+                csvContent += `${pair.replace('-', ',')}\n`;
+            });
+            downloadCSV('meeting_history.csv', csvContent);
+            log('Файл з історією успішно завантажено.', 'success');
+        });
+
+        // Початкова ініціалізація
+        window.addEventListener('load', () => {
+            log('Додаток готовий до роботи. Додайте учасників або згенеруйте тестові дані.');
+            renderParticipants();
+            updateCoverageStats();
+        });
+
+        // Слухачі подій
+        addParticipantBtn.addEventListener('click', addParticipant);
+        participantNicheInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addParticipant();
+        });
+        generateGroupsBtn.addEventListener('click', () => {
+            if (participants.length !== lastGeneratedParticipantCount) {
+                 startGeneration(1);
+            } else {
+                 startGeneration(groupsHistory.length + 1);
+            }
+        });
+    </script>
+</body>
+</html>
